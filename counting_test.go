@@ -43,60 +43,6 @@ func TestCountingCount(t *testing.T) {
 	}
 }
 
-// Ensures that TestCount returns the number of occurrences of an item in the filter,
-// and that TestCount works with Add, and TestAndAdd
-func TestCountingTestAndAddCount(t *testing.T) {
-	f := NewDefaultCountingBloomFilter(100, 0.1)
-
-	// `a` isn't in the filter.
-	if f.TestCount([]byte(`a`)) != 0 {
-		t.Error("`a` should not be a member")
-	}
-
-	for i := 0; i < 5; i++ {
-		f.Add([]byte(`a`))
-	}
-
-	// `a` is now in the filter.
-	if count := f.TestCount([]byte(`a`)); count != 5 {
-		t.Errorf("Expected 5 instances of `a`, got %d", count)
-	}
-
-	// `a` is still in the filter.
-	if !f.TestAndAdd([]byte(`a`)) {
-		t.Error("`a` should be a member")
-	}
-
-	// `b` is not in the filter.
-	if f.TestAndAdd([]byte(`b`)) {
-		t.Error("`b` should not be a member")
-	}
-
-	// `a` is still in the filter.
-	if count := f.TestCount([]byte(`a`)); count != 6 {
-		t.Errorf("Expected 6 instances of `a`, got %d", count)
-	}
-
-	// `b` is now in the filter.
-	if count := f.TestCount([]byte(`b`)); count != 1 {
-		t.Errorf("Expected 1 instance of `b`, got %d", count)
-	}
-
-	// `c` is not in the filter.
-	if count := f.Test([]byte(`c`)); count != 0 {
-		t.Errorf("Expected 0 instances of `c`, got %d", count)
-	}
-
-	for i := 0; i < 1000000; i++ {
-		f.TestAndAdd([]byte(strconv.Itoa(i)))
-	}
-
-	// `x` should be a false positive.
-	if count := f.Test([]byte(`x`)); count == 0 {
-		t.Error("Expected more than 0 instances of `x`, got 0")
-	}
-}
-
 // Ensures that Test, Add, and TestAndAdd behave correctly.
 func TestCountingTestAndAdd(t *testing.T) {
 	f := NewDefaultCountingBloomFilter(100, 0.1)
@@ -147,6 +93,60 @@ func TestCountingTestAndAdd(t *testing.T) {
 	// `x` should be a false positive.
 	if !f.Test([]byte(`x`)) {
 		t.Error("`x` should be a member")
+	}
+}
+
+// Ensures that TestCount returns the number of occurrences of an item in the filter,
+// and that TestCount works with Add, and TestAndAdd
+func TestCountingTestAndAddCount(t *testing.T) {
+	f := NewDefaultCountingBloomFilter(100, 0.1)
+
+	// `a` isn't in the filter.
+	if f.TestCount([]byte(`a`)) != 0 {
+		t.Error("`a` should not be a member")
+	}
+
+	for i := 0; i < 5; i++ {
+		f.Add([]byte(`a`))
+	}
+
+	// `a` is now in the filter.
+	if count := f.TestCount([]byte(`a`)); count != 5 {
+		t.Errorf("Expected 5 instances of `a`, got %d", count)
+	}
+
+	// `a` is still in the filter.
+	if !f.TestAndAdd([]byte(`a`)) {
+		t.Error("`a` should be a member")
+	}
+
+	// `b` is not in the filter.
+	if f.TestAndAdd([]byte(`b`)) {
+		t.Error("`b` should not be a member")
+	}
+
+	// `a` is still in the filter.
+	if count := f.TestCount([]byte(`a`)); count != 6 {
+		t.Errorf("Expected 6 instances of `a`, got %d", count)
+	}
+
+	// `b` is now in the filter.
+	if count := f.TestCount([]byte(`b`)); count != 1 {
+		t.Errorf("Expected 1 instance of `b`, got %d", count)
+	}
+
+	// `c` is not in the filter.
+	if count := f.TestCount([]byte(`c`)); count != 0 {
+		t.Errorf("Expected 0 instances of `c`, got %d", count)
+	}
+
+	for i := 0; i < 1000000; i++ {
+		f.TestAndAdd([]byte(strconv.Itoa(i)))
+	}
+
+	// `x` should be a false positive.
+	if count := f.TestCount([]byte(`x`)); count == 0 {
+		t.Error("Expected more than 0 instances of `x`, got 0")
 	}
 }
 
@@ -207,22 +207,22 @@ func TestCounting_EncodeDecode(t *testing.T) {
 		t.Error(err)
 	}
 
-	f2 := &BloomFilter{}
+	f2 := &CountingBloomFilter{}
 	if err := gob.NewDecoder(&buf).Decode(f2); err != nil {
 		t.Error(err)
 	}
 
 	if diff, equal := messagediff.PrettyDiff(f, f2); !equal {
-		t.Errorf("BloomFilter Gob Encode and Decode = %+v; not %+v\n%s", f2, f, diff)
+		t.Errorf("CountingBloomFilter Gob Encode and Decode = %+v; not %+v\n%s", f2, f, diff)
 	}
 
 	if len(f.buckets.data) != len(f2.buckets.data) {
-		t.Errorf("BloomFilter has different sized data after encode/decode")
+		t.Errorf("CountingBloomFilter has different sized data after encode/decode")
 	}
 
 	for i := 0; i < len(f.buckets.data); i++ {
 		if f.buckets.data[i] != f2.buckets.data[i] {
-			t.Errorf("BloomFilter has different data after encode/decode")
+			t.Errorf("CountingBloomFilter has different data after encode/decode")
 		}
 	}
 }

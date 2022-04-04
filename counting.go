@@ -1,8 +1,11 @@
 package boom
 
 import (
+	"bytes"
+	"encoding/binary"
 	"hash"
 	"hash/fnv"
+	"io"
 	"math"
 )
 
@@ -87,7 +90,9 @@ func (c *CountingBloomFilter) Test(data []byte) bool {
 	return true
 }
 
-// Same as Test but returns an approximate count of occurrences of data in CountingBloomFilter
+// Same as Test but returns an approximate count of occurrences of data in CountingBloomFilter.
+// Note that the count is always the minimum count, which assumes that no element removals are made.
+// If element removal is done leading to false negatives, a different count metric should be used.
 func (c *CountingBloomFilter) TestCount(data []byte) uint32 {
 	lower, upper := hashKernel(data, c.hash)
 
@@ -173,4 +178,109 @@ func (c *CountingBloomFilter) Reset() *CountingBloomFilter {
 // For the effect on false positive rates see: https://github.com/tylertreat/BoomFilters/pull/1
 func (c *CountingBloomFilter) SetHash(h hash.Hash64) {
 	c.hash = h
+}
+
+// WriteTo writes a binary representation of the CountingBloomFilter to an i/o stream.
+// It returns the number of bytes written.
+func (c *CountingBloomFilter) WriteTo(stream io.Writer) (int64, error) {
+	err := binary.Write(stream, binary.BigEndian, uint64(c.count))
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Write(stream, binary.BigEndian, uint64(c.m))
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Write(stream, binary.BigEndian, uint64(c.k))
+	if err != nil {
+		return 0, err
+	}
+
+	// Create + insert index buffer:
+	indexBuffer := make([]uint64, c.k)
+	for i := uint(0); i < c.k; i++ {
+		indexBuffer[i] = uint64(c.indexBuffer[i])
+	}
+
+	err = binary.Write(stream, binary.BigEndian, indexBuffer)
+	if err != nil {
+		return 0, err
+	}
+
+	writtenSize, err := c.buckets.WriteTo(stream)
+	if err != nil {
+		return 0, err
+	}
+
+	return writtenSize + int64((3+int(c.k))*binary.Size(uint64(0))), err
+}
+
+// ReadFrom reads a binary representation of BloomFilter (such as might
+// have been written by WriteTo()) from an i/o stream. It returns the number
+// of bytes read.
+func (c *CountingBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
+	var count, m, k uint64
+	var buckets Buckets
+
+	err := binary.Read(stream, binary.BigEndian, &count)
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Read(stream, binary.BigEndian, &m)
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Read(stream, binary.BigEndian, &k)
+	if err != nil {
+		return 0, err
+	}
+
+	indexBuffer := make([]uint64, k)
+
+	// TODO: Explicitly verify buffer lengths are the same?
+	err = binary.Read(stream, binary.BigEndian, &indexBuffer)
+	if err != nil {
+		return 0, err
+	}
+
+	readSize, err := buckets.ReadFrom(stream)
+	if err != nil {
+		return 0, err
+	}
+
+	c.count = uint(count)
+	c.m = uint(m)
+	c.k = uint(k)
+	c.indexBuffer = make([]uint, k)
+
+	// Convert index buffer elements to uint:
+	for i := uint(0); i < c.k; i++ {
+		c.indexBuffer[i] = uint(indexBuffer[i])
+	}
+
+	c.buckets = &buckets
+	return readSize + int64((3+int(c.k))*binary.Size(uint64(0))), nil
+}
+
+// GobEncode implements gob.GobEncoder interface.
+func (c *CountingBloomFilter) GobEncode() ([]byte, error) {
+	var buf bytes.Buffer
+	_, err := c.WriteTo(&buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+// GobDecode implements gob.GobDecoder interface.
+func (c *CountingBloomFilter) GobDecode(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	_, err := c.ReadFrom(buf)
+	// TODO: encode hash also maybe?
+	if c.hash == nil {
+		c.hash = fnv.New64()
+	}
+
+	return err
 }
