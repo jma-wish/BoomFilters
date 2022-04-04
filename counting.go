@@ -3,6 +3,7 @@ package boom
 import (
 	"hash"
 	"hash/fnv"
+	"math"
 )
 
 // CountingBloomFilter implements a Counting Bloom Filter as described by Fan,
@@ -84,6 +85,23 @@ func (c *CountingBloomFilter) Test(data []byte) bool {
 	}
 
 	return true
+}
+
+// Same as Test but returns an approximate count of occurrences of data in CountingBloomFilter
+func (c *CountingBloomFilter) TestCount(data []byte) uint32 {
+	lower, upper := hashKernel(data, c.hash)
+
+	var ans uint32 = math.MaxUint32
+	// Take the smallest count
+	for i := uint(0); i < c.k; i++ {
+		tmp := c.buckets.Get((uint(lower) + uint(upper)*i) % c.m)
+
+		if tmp < ans {
+			ans = tmp
+		}
+	}
+
+	return ans
 }
 
 // Add will add the data to the Bloom filter. It returns the filter to allow
